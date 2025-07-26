@@ -12,9 +12,9 @@ import java.net.SocketTimeoutException
 import java.util.*
 import java.util.concurrent.TimeoutException
 import kotlinx.coroutines.*
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.delay
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
@@ -262,26 +262,27 @@ class HybridSyncManager(private val context: Context) {
             bleService.addDataForSync(data)
 
             // Wait for connection and transfer completion
-            val result = withTimeout(60000L) { // 1 minute timeout
-                while (true) {
-                    when (bleService.connectionState.value) {
-                        WearOSBLEService.BLEConnectionState.CONNECTED -> {
-                            // Wait for transfer completion
-                            delay(5000) // Give time for data transfer
-                            Log.d(TAG, "BLE sync completed successfully")
-                            return@withTimeout true
+            val result =
+                    withTimeout(60000L) { // 1 minute timeout
+                        while (true) {
+                            when (bleService.connectionState.value) {
+                                WearOSBLEService.BLEConnectionState.CONNECTED -> {
+                                    // Wait for transfer completion
+                                    delay(5000) // Give time for data transfer
+                                    Log.d(TAG, "BLE sync completed successfully")
+                                    return@withTimeout true
+                                }
+                                WearOSBLEService.BLEConnectionState.DISCONNECTED -> {
+                                    delay(1000) // Wait for connection
+                                }
+                                else -> {
+                                    delay(500)
+                                }
+                            }
                         }
-                        WearOSBLEService.BLEConnectionState.DISCONNECTED -> {
-                            delay(1000) // Wait for connection
-                        }
-                        else -> {
-                            delay(500)
-                        }
+                        @Suppress("UNREACHABLE_CODE")
+                        false // This will never be reached but satisfies the type checker
                     }
-                }
-                @Suppress("UNREACHABLE_CODE")
-                false // This will never be reached but satisfies the type checker
-            }
             result
         } catch (e: TimeoutException) {
             Log.w(TAG, "BLE sync timeout")
@@ -293,7 +294,7 @@ class HybridSyncManager(private val context: Context) {
             // Always stop advertising after sync attempt
             bleService.stopAdvertising()
         }
-        
+
         return false // Default return if no explicit return was made
     }
 

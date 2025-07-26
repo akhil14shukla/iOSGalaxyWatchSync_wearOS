@@ -40,7 +40,7 @@ class SimpleSyncTest(private val context: Context) {
                 Log.d(TAG, "Testing BLE advertising...")
                 val started = syncManager.startBLEAdvertising()
                 Log.d(TAG, "BLE advertising started: $started")
-                
+
                 // Stop after 10 seconds
                 kotlinx.coroutines.delay(10000)
                 syncManager.stopBLEAdvertising()
@@ -56,25 +56,23 @@ class SimpleSyncTest(private val context: Context) {
         scope.launch {
             try {
                 Log.d(TAG, "Testing data sync...")
-                
+
                 // Create test data
-                val testData = listOf(
-                    HealthDataEntry(
-                        id = "test_${UUID.randomUUID()}",
-                        timestamp = System.currentTimeMillis(),
-                        type = HealthDataType.DAILY_METRICS,
-                        data = mapOf(
-                            "steps" to 10000,
-                            "calories" to 2500
-                        ),
-                        source = "Test"
-                    )
-                )
-                
+                val testData =
+                        listOf(
+                                HealthDataEntry(
+                                        id = "test_${UUID.randomUUID()}",
+                                        timestamp = System.currentTimeMillis(),
+                                        type = HealthDataType.DAILY_METRICS,
+                                        data = mapOf("steps" to 10000, "calories" to 2500),
+                                        source = "Test"
+                                )
+                        )
+
                 // Add and sync
                 syncManager.addHealthData(testData)
                 val success = syncManager.startSync()
-                
+
                 Log.d(TAG, "Sync completed: $success")
             } catch (e: Exception) {
                 Log.e(TAG, "Data sync test failed", e)

@@ -16,7 +16,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
-import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.material.*
 
 class MainActivity : ComponentActivity() {
@@ -137,15 +136,25 @@ fun WearApp(
 
                 item {
                         Button(
-                                onClick = { 
-                                    // Cycle through common local IPs for testing
-                                    val currentUrl = when {
-                                        viewModel.getSyncStats().contains("192.168.1.100") -> "http://192.168.1.101:3000"
-                                        viewModel.getSyncStats().contains("192.168.1.101") -> "http://192.168.0.100:3000"
-                                        viewModel.getSyncStats().contains("192.168.0.100") -> "http://10.0.0.100:3000"
-                                        else -> "http://192.168.1.100:3000"
-                                    }
-                                    viewModel.setServerUrl(currentUrl)
+                                onClick = {
+                                        // Cycle through common local IPs for testing
+                                        val currentUrl =
+                                                when {
+                                                        viewModel
+                                                                .getSyncStats()
+                                                                .contains("192.168.1.100") ->
+                                                                "http://192.168.1.101:3000"
+                                                        viewModel
+                                                                .getSyncStats()
+                                                                .contains("192.168.1.101") ->
+                                                                "http://192.168.0.100:3000"
+                                                        viewModel
+                                                                .getSyncStats()
+                                                                .contains("192.168.0.100") ->
+                                                                "http://10.0.0.100:3000"
+                                                        else -> "http://192.168.1.100:3000"
+                                                }
+                                        viewModel.setServerUrl(currentUrl)
                                 },
                                 colors =
                                         ButtonDefaults.buttonColors(
