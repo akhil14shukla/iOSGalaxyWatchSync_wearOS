@@ -8,56 +8,61 @@ import androidx.health.services.client.PassiveMonitoringClient
 import androidx.health.services.client.data.*
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.firebase.firestore.ktx.firestore
-import com.google.firebase.ktx.Firebase
+import com.example.iosgalaxywatchsync.models.*
+import com.example.iosgalaxywatchsync.sync.HybridSyncManager
 import java.util.Date
+import java.util.UUID
 import kotlinx.coroutines.launch
-
-// --- UPDATED DATA STRUCTURES FOR FIRESTORE ---
-
-// This will hold daily aggregated data instead of workout-specific data.
-data class DailyData(
-        val date: Date = Date(),
-        val totalDistanceMeters: Double = 0.0,
-        val totalCalories: Double = 0.0,
-        val processed: Boolean = false
-)
-
-data class SleepStage(
-        val stage: String = "AWAKE",
-        val startTime: Date = Date(),
-        val endTime: Date = Date()
-)
-
-data class SleepSession(
-        val startTime: Date = Date(),
-        val endTime: Date = Date(),
-        val durationMillis: Long = 0,
-        val stages: List<SleepStage> = emptyList(),
-        val processed: Boolean = false
-)
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     val syncStatus = mutableStateOf("Ready")
-    var sharedUserID = mutableStateOf("KhhBzMqP1nbSsJBb4FXEtdpi77F3") // Your hardcoded ID
 
     private val healthClient = HealthServices.getClient(application.applicationContext)
     private val passiveClient: PassiveMonitoringClient = healthClient.passiveMonitoringClient
-    private val firestore = Firebase.firestore
 
-    // --- NEW: Function to start passive daily monitoring ---
+    // Replace Firebase with HybridSyncManager
+    private val hybridSyncManager = HybridSyncManager(application.applicationContext)
+
+    init {
+        // Observe sync state
+        viewModelScope.launch {
+            hybridSyncManager.syncState.collect { state ->
+                syncStatus.value =
+                        when {
+                            state.pendingDataCount > 0 -> "Pending: ${state.pendingDataCount} items"
+                            state.lastSyncSuccess -> "Last sync: ${state.lastSyncMethod.name}"
+                            state.lastSyncError != null -> "Error: ${state.lastSyncError}"
+                            else -> "Ready"
+                        }
+            }
+        }
+
+        // Start BLE advertising for fallback sync
+        hybridSyncManager.startBLEAdvertising()
+    }
+
+    /** Start passive daily monitoring and sync */
     fun startPassiveDailySync() {
         viewModelScope.launch {
             try {
                 syncStatus.value = "Starting Daily Sync..."
 
-                // For now, we'll simulate getting daily data and upload it
-                // In a real implementation, you would set up passive monitoring
-                // but the exact API might be different in the version being used
-                uploadDailyData(0.0, 0.0) // Placeholder values
+                // Simulate daily data collection
+                val dailyData = collectDailyHealthData()
 
-                syncStatus.value = "Daily Sync Active"
-                Log.d("PassiveData", "Daily sync started successfully")
+                // Add to hybrid sync manager
+                hybridSyncManager.addHealthData(listOf(dailyData))
+
+                // Trigger sync
+                val success = hybridSyncManager.startSync()
+
+                if (success) {
+                    syncStatus.value = "Daily Sync Complete"
+                } else {
+                    syncStatus.value = "Daily Sync Failed - Will retry"
+                }
+
+                Log.d("PassiveData", "Daily sync completed: $success")
             } catch (e: Exception) {
                 Log.e("PassiveData", "Failed to start passive sync", e)
                 syncStatus.value = "Passive Sync Error"
@@ -65,92 +70,151 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Helper function to convert sleep stage values to strings
-    private fun getSleepStageString(sleepStage: Int): String {
-        return when (sleepStage) {
-            1 -> "AWAKE"
-            2 -> "REM"
-            3 -> "LIGHT"
-            4 -> "DEEP"
-            else -> "UNKNOWN"
-        }
-    }
-
-    private fun uploadDailyData(distance: Double, calories: Double) {
-        val userId = sharedUserID.value
-        val dailyData = DailyData(totalDistanceMeters = distance, totalCalories = calories)
-
-        // We use the date as the document ID to prevent multiple entries for the same day.
-        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(Date())
-
-        firestore
-                .collection("users")
-                .document(userId)
-                .collection("dailyMetrics")
-                .document(today)
-                .set(dailyData)
-                .addOnSuccessListener { Log.d("Firestore", "Daily metrics uploaded for $today") }
-                .addOnFailureListener { e -> Log.w("Firestore", "Daily metrics upload failed", e) }
-    }
-
-    // --- SLEEP ---
+    /** Sync sleep data */
     fun syncSleepData() {
         viewModelScope.launch {
             try {
                 syncStatus.value = "Syncing Sleep Data..."
 
-                // For now, we'll create sample sleep data
-                // In a real implementation, you would query the Health Services API
-                val sampleSleepStages =
-                        listOf(
-                                SleepStage(
-                                        "DEEP",
-                                        Date(System.currentTimeMillis() - 8 * 60 * 60 * 1000),
-                                        Date(System.currentTimeMillis() - 6 * 60 * 60 * 1000)
-                                ),
-                                SleepStage(
-                                        "LIGHT",
-                                        Date(System.currentTimeMillis() - 6 * 60 * 60 * 1000),
-                                        Date(System.currentTimeMillis() - 4 * 60 * 60 * 1000)
-                                ),
-                                SleepStage(
-                                        "REM",
-                                        Date(System.currentTimeMillis() - 4 * 60 * 60 * 1000),
-                                        Date(System.currentTimeMillis() - 2 * 60 * 60 * 1000)
-                                ),
-                                SleepStage(
-                                        "AWAKE",
-                                        Date(System.currentTimeMillis() - 2 * 60 * 60 * 1000),
-                                        Date(System.currentTimeMillis())
-                                )
-                        )
+                // Create sample sleep session data
+                val sleepData = createSampleSleepData()
 
-                val sleepSessionData =
-                        SleepSession(
-                                startTime = Date(System.currentTimeMillis() - 8 * 60 * 60 * 1000),
-                                endTime = Date(System.currentTimeMillis()),
-                                durationMillis = 8 * 60 * 60 * 1000,
-                                stages = sampleSleepStages
-                        )
+                // Add to hybrid sync manager
+                hybridSyncManager.addHealthData(listOf(sleepData))
 
-                val userId = sharedUserID.value
-                firestore
-                        .collection("users")
-                        .document(userId)
-                        .collection("sleep")
-                        .add(sleepSessionData)
-                        .addOnSuccessListener {
-                            Log.d("Firestore", "Sleep session uploaded")
-                            syncStatus.value = "Sleep Sync Complete"
-                        }
-                        .addOnFailureListener { e ->
-                            Log.w("Firestore", "Sleep session upload failed", e)
-                            syncStatus.value = "Sleep Sync Failed"
-                        }
+                // Trigger sync
+                val success = hybridSyncManager.startSync()
+
+                if (success) {
+                    syncStatus.value = "Sleep Sync Complete"
+                } else {
+                    syncStatus.value = "Sleep Sync Failed - Will retry"
+                }
+
+                Log.d("SleepData", "Sleep sync completed: $success")
             } catch (e: Exception) {
                 Log.e("HealthData", "Could not sync sleep data", e)
                 syncStatus.value = "Sleep Sync Failed"
             }
         }
+    }
+
+    /** Manual sync trigger */
+    fun triggerManualSync() {
+        viewModelScope.launch {
+            try {
+                syncStatus.value = "Manual Sync Starting..."
+
+                val success = hybridSyncManager.startSync()
+
+                if (success) {
+                    syncStatus.value = "Manual Sync Complete"
+                } else {
+                    syncStatus.value = "Manual Sync Failed"
+                }
+            } catch (e: Exception) {
+                Log.e("ManualSync", "Manual sync failed", e)
+                syncStatus.value = "Manual Sync Error"
+            }
+        }
+    }
+
+    /** Check server connectivity */
+    fun checkServerConnection() {
+        viewModelScope.launch {
+            val isAvailable = hybridSyncManager.checkServerAvailability()
+            val url = hybridSyncManager.getServerUrl()
+
+            syncStatus.value =
+                    if (isAvailable) {
+                        "Server OK: $url"
+                    } else {
+                        "Server Unavailable - BLE Fallback"
+                    }
+        }
+    }
+
+    /** Configure server URL */
+    fun setServerUrl(url: String) {
+        hybridSyncManager.setServerUrl(url)
+        syncStatus.value = "Server URL Updated: $url"
+    }
+
+    /** Get sync statistics */
+    fun getSyncStats(): String {
+        val stats = hybridSyncManager.getSyncStats()
+        return "Unsynced: ${stats["unsyncedDataCount"]}, " +
+                "Server: ${if (stats["isServerAvailable"] == true) "OK" else "OFFLINE"}, " +
+                "Device: ${stats["deviceId"]}"
+    }
+
+    private fun collectDailyHealthData(): HealthDataEntry {
+        // In a real implementation, this would collect actual health data
+        // For now, we'll create sample data
+
+        val data =
+                mapOf(
+                        "date" to Date().time,
+                        "totalDistanceMeters" to (5000.0 + Math.random() * 10000.0),
+                        "totalCalories" to (1500.0 + Math.random() * 1000.0),
+                        "steps" to (8000 + Math.random() * 5000).toInt(),
+                        "activeMinutes" to (45 + Math.random() * 60).toInt()
+                )
+
+        return HealthDataEntry(
+                id = UUID.randomUUID().toString(),
+                timestamp = System.currentTimeMillis(),
+                type = HealthDataType.DAILY_METRICS,
+                data = data,
+                source = "Galaxy Watch"
+        )
+    }
+
+    private fun createSampleSleepData(): HealthDataEntry {
+        val sleepStages =
+                listOf(
+                        mapOf(
+                                "stage" to "DEEP",
+                                "startTime" to (System.currentTimeMillis() - 8 * 60 * 60 * 1000),
+                                "endTime" to (System.currentTimeMillis() - 6 * 60 * 60 * 1000)
+                        ),
+                        mapOf(
+                                "stage" to "LIGHT",
+                                "startTime" to (System.currentTimeMillis() - 6 * 60 * 60 * 1000),
+                                "endTime" to (System.currentTimeMillis() - 4 * 60 * 60 * 1000)
+                        ),
+                        mapOf(
+                                "stage" to "REM",
+                                "startTime" to (System.currentTimeMillis() - 4 * 60 * 60 * 1000),
+                                "endTime" to (System.currentTimeMillis() - 2 * 60 * 60 * 1000)
+                        ),
+                        mapOf(
+                                "stage" to "AWAKE",
+                                "startTime" to (System.currentTimeMillis() - 2 * 60 * 60 * 1000),
+                                "endTime" to System.currentTimeMillis()
+                        )
+                )
+
+        val data =
+                mapOf(
+                        "startTime" to (System.currentTimeMillis() - 8 * 60 * 60 * 1000),
+                        "endTime" to System.currentTimeMillis(),
+                        "durationMillis" to (8 * 60 * 60 * 1000),
+                        "stages" to sleepStages,
+                        "sleepQuality" to (60 + Math.random() * 40).toInt()
+                )
+
+        return HealthDataEntry(
+                id = UUID.randomUUID().toString(),
+                timestamp = System.currentTimeMillis(),
+                type = HealthDataType.SLEEP_SESSION,
+                data = data,
+                source = "Galaxy Watch"
+        )
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        hybridSyncManager.cleanup()
     }
 }
