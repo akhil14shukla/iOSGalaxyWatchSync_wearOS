@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     val syncStatus = mutableStateOf("Ready")
+    val context = application.applicationContext
 
     private val healthClient = HealthServices.getClient(application.applicationContext)
     private val passiveClient: PassiveMonitoringClient = healthClient.passiveMonitoringClient

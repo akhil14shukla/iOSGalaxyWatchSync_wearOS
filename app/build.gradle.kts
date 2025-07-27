@@ -71,3 +71,4 @@ dependencies {
     // You might also need a converter, e.g., for Gson
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
 }
+}
